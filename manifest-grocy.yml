@@ -1,0 +1,12 @@
+image: 501stalpha1/grocy:v2.6.2-3
+manifests:
+  -
+    image: 501stalpha1/grocy:v2.6.2-3-amd64
+    platform:
+      architecture: amd64
+      os: linux
+  -
+    image: 501stalpha1/grocy:v2.6.2-3-386
+    platform:
+      architecture: 386
+      os: linux

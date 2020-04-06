@@ -1,40 +1,27 @@
-.PHONY: build pod grocy nginx
+.PHONY: all push
 
-GROCY_VERSION = v2.6.2
-IMAGE_COMMIT := $(shell git rev-parse --short HEAD)
-IMAGE_TAG := $(strip $(if $(shell git status --porcelain --untracked-files=no), "${IMAGE_COMMIT}-dirty", "${IMAGE_COMMIT}"))
+USER=501stalpha1
+ifeq ($(shell uname -m), i686)
+  PLATFORM=386
+else
+  PLATFORM=amd64
+endif
+VERSION=v2.6.2
+BUILD=3
+GITHUB_API_TOKEN=
 
-build: pod grocy nginx
-	podman run \
-        --add-host grocy:127.0.0.1 \
-        --detach \
-        --env-file grocy.env \
-        --name grocy \
-        --pod grocy-pod \
-        --read-only \
-        --volume /var/log/php7 \
-        --volume app-db:/var/www/data \
-        --volume www-static:/var/www/public:ro \
-        grocy:${IMAGE_TAG}
-	podman run \
-        --add-host grocy:127.0.0.1 \
-        --detach \
-        --name nginx \
-        --pod grocy-pod \
-        --read-only \
-        --tmpfs /tmp \
-        --volume /var/log/nginx \
-        --volume www-static:/var/www/public:ro \
-        nginx:${IMAGE_TAG}
+all: .last-docker-build
 
-pod:
-	podman pod rm -f grocy-pod || true
-	podman pod create --name grocy-pod --publish 127.0.0.1:8080:8080
+.last-docker-build: Dockerfile-grocy Dockerfile-grocy-nginx
+	docker build -t "$(USER)/grocy-nginx:$(VERSION)-$(BUILD)-$(PLATFORM)" -f Dockerfile-grocy-nginx .
+	docker build --build-arg GROCY_VERSION=$(VERSION) --build-arg GITHUB_API_TOKEN=$(GITHUB_API_TOKEN) -t "$(USER)/grocy:$(VERSION)-$(BUILD)-$(PLATFORM)" -f Dockerfile-grocy .
+	@touch $@
 
-grocy:
-	podman image exists $@:${IMAGE_TAG} || buildah bud --build-arg GITHUB_API_TOKEN=${GITHUB_API_TOKEN} --build-arg GROCY_VERSION=${GROCY_VERSION} -f Dockerfile-grocy -t $@:${IMAGE_TAG} .
-	podman tag $@:${IMAGE_TAG} $@:latest
+push: .last-docker-push
 
-nginx:
-	podman image exists $@:${IMAGE_TAG} || buildah bud -f Dockerfile-grocy-nginx -t $@:${IMAGE_TAG} .
-	podman tag $@:${IMAGE_TAG} $@:latest
+.last-docker-push: .last-docker-build
+	docker push "$(USER)/grocy-nginx:$(VERSION)-$(BUILD)-$(PLATFORM)"
+	docker push "$(USER)/grocy:$(VERSION)-$(BUILD)-$(PLATFORM)"
+	manifest-tool push from-spec ./manifest-nginx.yml --ignore-missing
+	manifest-tool push from-spec ./manifest-grocy.yml --ignore-missing
+	@touch $@
